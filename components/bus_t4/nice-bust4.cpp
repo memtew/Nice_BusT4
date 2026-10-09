@@ -524,10 +524,12 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
 			      break;
 			    case OPEN:
 			      ESP_LOGI(TAG, "Команда: OPEN");
+                  this->robus_stop_latched_ = false;
 			      this->current_operation = COVER_OPERATION_OPENING;
 			      break;
 			    case CLOSE:
 			      ESP_LOGI(TAG, "Команда: CLOSE");
+                  this->robus_stop_latched_ = false;
 			      this->current_operation = COVER_OPERATION_CLOSING;
 			      break;
 			    case P_OPN1:
@@ -535,6 +537,7 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
 			      break;
 			    case STOPPED:
 			      ESP_LOGI(TAG, "Команда: Остановлено");
+                  this->robus_stop_latched_ = true;
 			      this->current_operation = COVER_OPERATION_IDLE;
 			      request_position();
 			      break;
@@ -550,10 +553,12 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
 			  switch (data[11]) {  // sub_run_cmd2
 			    case STA_OPENING:
 			      ESP_LOGI(TAG, "Операция: Открывается");
+                  this->robus_stop_latched_ = false;
 			      this->current_operation = COVER_OPERATION_OPENING;
 			      break;
 			    case STA_CLOSING:
 			      ESP_LOGI(TAG, "Операция: Закрывается");
+                  this->robus_stop_latched_ = false;
 			      this->current_operation = COVER_OPERATION_CLOSING;
 			      break;
 			    case CLOSED:
@@ -573,6 +578,7 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
 			      break;
 			    case STOPPED:
 			      ESP_LOGI(TAG, "Операция: Остановлено");
+                  this->robus_stop_latched_ = true;
 			      this->current_operation = COVER_OPERATION_IDLE;
 			      request_position();
 			      break;
@@ -588,42 +594,53 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
 			this->publish_state_if_changed();  // публикуем состояние
             break; //RUN
 
-          case STA:
-            ESP_LOGI(TAG,  "Подменю Статус в движении" );
-            switch (data[11]) { // sub_run_cmd2
-              case STA_OPENING:
-              case 0x83: // Road 400
-                ESP_LOGI(TAG, "Движение: Открывается" );
-                this->current_operation = COVER_OPERATION_OPENING;
-                break;
-              case STA_CLOSING:
-              case 0x84: // Road 400
-                ESP_LOGI(TAG,  "Движение: Закрывается" );
-                this->current_operation = COVER_OPERATION_CLOSING;
-                break;
-              case CLOSED:
-                ESP_LOGI(TAG,  "Движение: Закрыто" );
-                this->current_operation = COVER_OPERATION_IDLE;
-                this->position = COVER_CLOSED;
-                break;
-              case OPENED:
-                ESP_LOGI(TAG, "Движение: Открыто");
-                this->current_operation = COVER_OPERATION_IDLE;
-                this->position = COVER_OPEN;
-                break;
-              case STOPPED:
-                ESP_LOGI(TAG, "Движение: Остановлено");
-                this->current_operation = COVER_OPERATION_IDLE;
-                request_position();
-                break;
-              default: // sub_run_cmd2
-                ESP_LOGI(TAG,  "Движение: %X", data[11] );
-
-                
-            } // switch sub_run_cmd2
-
-            update_position((data[12] << 8) + data[13]);
-            break; //STA
+          case STA: {
+            ESP_LOGI(TAG, "Подменю Статус в движении");
+            const uint16_t newpos = (static_cast<uint16_t>(data[12]) << 8) | data[13];
+            if (this->is_robus) {
+              // ROBUS reports 0x02 in STA position frames in BOTH directions.
+              // Determine direction from the encoder delta, not that status byte.
+              // After STOP, a late position frame must not reactivate motion.
+              if (!this->robus_stop_latched_ && this->robus_sta_position_valid_) {
+                if (newpos > this->robus_sta_last_position_) {
+                  this->current_operation = COVER_OPERATION_OPENING;
+                } else if (newpos < this->robus_sta_last_position_) {
+                  this->current_operation = COVER_OPERATION_CLOSING;
+                }
+              }
+              this->robus_sta_last_position_ = newpos;
+              this->robus_sta_position_valid_ = true;
+              ESP_LOGD(TAG, "ROBUS STA: pos=%u, op=%d, stop_latched=%d", newpos,
+                       static_cast<int>(this->current_operation), this->robus_stop_latched_);
+            } else {
+              switch (data[11]) {
+                case STA_OPENING:
+                case 0x83:
+                  this->current_operation = COVER_OPERATION_OPENING;
+                  break;
+                case STA_CLOSING:
+                case 0x84:
+                  this->current_operation = COVER_OPERATION_CLOSING;
+                  break;
+                case CLOSED:
+                  this->current_operation = COVER_OPERATION_IDLE;
+                  this->position = COVER_CLOSED;
+                  break;
+                case OPENED:
+                  this->current_operation = COVER_OPERATION_IDLE;
+                  this->position = COVER_OPEN;
+                  break;
+                case STOPPED:
+                  this->current_operation = COVER_OPERATION_IDLE;
+                  request_position();
+                  break;
+                default:
+                  ESP_LOGI(TAG, "Движение: %X", data[11]);
+              }
+            }
+            update_position(newpos);
+            break;
+          } // STA
 
           default: // sub_inf_cmd
             ESP_LOGI(TAG,  "Подменю %X", data[10] );
