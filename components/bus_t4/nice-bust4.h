@@ -412,6 +412,9 @@ class NiceBusT4 : public Component, public Cover {
     void request_position(void);  // Запрос условного текущего положения привода
     void update_position(uint16_t newpos);  // Обновление текущего положения привода
 
+    bool robus_stop_latched_{false};  // Ignore delayed movement telemetry after STOP
+    bool robus_sta_position_valid_{false};
+    uint16_t robus_sta_last_position_{0};
     uint32_t last_position_time{0};  // Время последнего обновления текущего положения
     uint32_t update_interval_{500};
     uint32_t last_update_{0};
