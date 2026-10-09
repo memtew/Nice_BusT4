@@ -525,11 +525,13 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
 			    case OPEN:
 			      ESP_LOGI(TAG, "Команда: OPEN");
                   this->robus_stop_latched_ = false;
+                  if (this->is_robus) this->robus_sta_position_valid_ = false;
 			      this->current_operation = COVER_OPERATION_OPENING;
 			      break;
 			    case CLOSE:
 			      ESP_LOGI(TAG, "Команда: CLOSE");
                   this->robus_stop_latched_ = false;
+                  if (this->is_robus) this->robus_sta_position_valid_ = false;
 			      this->current_operation = COVER_OPERATION_CLOSING;
 			      break;
 			    case P_OPN1:
@@ -538,6 +540,7 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
 			    case STOPPED:
 			      ESP_LOGI(TAG, "Команда: Остановлено");
                   this->robus_stop_latched_ = true;
+                  if (this->is_robus) this->robus_sta_position_valid_ = false;
 			      this->current_operation = COVER_OPERATION_IDLE;
 			      request_position();
 			      break;
@@ -554,11 +557,13 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
 			    case STA_OPENING:
 			      ESP_LOGI(TAG, "Операция: Открывается");
                   this->robus_stop_latched_ = false;
+                  if (this->is_robus) this->robus_sta_position_valid_ = false;
 			      this->current_operation = COVER_OPERATION_OPENING;
 			      break;
 			    case STA_CLOSING:
 			      ESP_LOGI(TAG, "Операция: Закрывается");
                   this->robus_stop_latched_ = false;
+                  if (this->is_robus) this->robus_sta_position_valid_ = false;
 			      this->current_operation = COVER_OPERATION_CLOSING;
 			      break;
 			    case CLOSED:
@@ -579,6 +584,7 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
 			    case STOPPED:
 			      ESP_LOGI(TAG, "Операция: Остановлено");
                   this->robus_stop_latched_ = true;
+                  if (this->is_robus) this->robus_sta_position_valid_ = false;
 			      this->current_operation = COVER_OPERATION_IDLE;
 			      request_position();
 			      break;
@@ -601,6 +607,8 @@ void NiceBusT4::parse_status_packet (const std::vector<uint8_t> &data) {
               // ROBUS reports 0x02 in STA position frames in BOTH directions.
               // Determine direction from the encoder delta, not that status byte.
               // After STOP, a late position frame must not reactivate motion.
+              // The first STA frame after a new RUN command establishes a fresh
+              // baseline; it must not be compared with the pre-STOP position.
               if (!this->robus_stop_latched_ && this->robus_sta_position_valid_) {
                 if (newpos > this->robus_sta_last_position_) {
                   this->current_operation = COVER_OPERATION_OPENING;
