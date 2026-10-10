@@ -101,6 +101,12 @@ web_server:
 
 # Кнопки для отправки команд
 button:
+  - platform: restart
+    name: "ESP Reboot"
+    id: esp_reboot
+    icon: mdi:power-cycle
+    entity_category: diagnostic
+
   - platform: template
     name: Пошагово
     id: sbs
